@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Icy Blue Dragon Eye — Fractal Crack Pupil (Pi Zero W + GC9A01)
-- Glacial iris (same as other icy file)
-- Pupil = three rotated serrated slits (0°, +20°, −20°) → snow/ice fracture look
+Magma Salamander Eye — BIG (Pi Zero W + GC9A01 240x240 SPI)
+- Molten iris with ember flecks + crack striations
+- Jagged 'lava fissure' pupil (serrated slit w/ lightning-bolt center)
 - Enlarged eyeball footprint (iris/sclera)
+- Scaly background (pre-rendered), soft shadow, blink
 """
 
 import time, math, random
@@ -13,9 +14,11 @@ import RPi.GPIO as GPIO
 import spidev
 from PIL import Image, ImageDraw
 
+# -------- Pins (BCM) --------
 DC  = 24
 RST = 25
 
+# -------- Eyeball scale (bigger eye) --------
 EYE_RADIUS = 112
 R_OUTER = EYE_RADIUS
 R_MID   = max(0, EYE_RADIUS - 16)
@@ -23,22 +26,24 @@ R_INNER = max(0, EYE_RADIUS - 36)
 R_STRIATION_OUT = max(0, EYE_RADIUS - 12)
 R_FLECK_MAX     = max(0, EYE_RADIUS - 14)
 
-BACKGROUND_COLOR     = (8, 10, 14)
-SCALE_OUTLINE        = (12, 24, 36)
-SCALE_FILL           = (20, 44, 64)
-SCALE_HILITE         = (140, 200, 230)
+# -------- Palette (magma) --------
+BACKGROUND_COLOR   = (12, 6, 4)
+SCALE_OUTLINE      = (38, 14, 10)
+SCALE_FILL         = (58, 24, 16)
+SCALE_HILITE       = (180, 90, 40)
 
-IRIS_OUTER           = (22, 92, 132)
-IRIS_MID             = (40, 150, 200)
-IRIS_INNER           = (210, 240, 255)
+IRIS_OUTER         = (130, 24, 12)   # dark lava crust
+IRIS_MID           = (210, 60, 20)   # molten red-orange
+IRIS_INNER         = (255, 200, 60)  # bright ember core
 
-FIBER_DARK           = (15, 40, 60)
-FIBER_CYAN           = (30, 120, 180)
+FISSURE_DARK       = (40, 10, 6)
+VEIN_ORANGE        = (220, 110, 30)
 
-PUPIL_COLOR          = (3, 6, 8)
-SPECULAR_A           = (245, 255, 255)
-SPECULAR_B           = (255, 255, 255)
+PUPIL_COLOR        = (6, 3, 2)
+SPECULAR_A         = (255, 230, 180)
+SPECULAR_B         = (255, 255, 255)
 
+# -------- GC9A01 Driver --------
 class GC9A01:
     def __init__(self):
         self.width, self.height = 240, 240
@@ -107,7 +112,8 @@ class GC9A01:
     def cleanup(self):
         self.spi.close(); GPIO.cleanup()
 
-class IcyDragonEyeFractal:
+# -------- Eye Model (magma, BIG) --------
+class MagmaSalamanderEye:
     def __init__(self, w=240, h=240):
         self.w, self.h = w, h
         self.cx, self.cy = w//2, h//2
@@ -115,14 +121,13 @@ class IcyDragonEyeFractal:
         self.blink_state = 0; self.blink = 0.0
         self.twinkle = 0.0
 
-        # Crack pupil (three rotated serrated slits)
-        self.slit_height = 128
-        self.base_width  = 12
-        self.pointiness  = 2.1
-        self.serration_amp  = 0.26
+        # Lava fissure slit parameters (scaled up)
+        self.slit_height = 136
+        self.base_width  = 16        # mid-width in the center (try 14–20)
+        self.pointiness  = 2.1       # taper exponent
+        self.serration_amp = 0.28
         self.serration_freq = 0.33
-        self.center_zigzag  = 0.9
-        self.angles = [0.0, math.radians(20.0), math.radians(-20.0)]
+        self.center_zigzag = 1.2
 
         self.scale_bg = self._render_scales()
 
@@ -159,7 +164,7 @@ class IcyDragonEyeFractal:
             self.blink -= 0.5
             if self.blink <= 0: self.blink=0; self.blink_state=0
 
-        self.twinkle += 0.06
+        self.twinkle += 0.07
 
     def _draw_iris(self, d, ix, iy):
         d.ellipse([ix-R_OUTER, iy-R_OUTER, ix+R_OUTER, iy+R_OUTER], fill=IRIS_OUTER)
@@ -167,61 +172,50 @@ class IcyDragonEyeFractal:
         d.ellipse([ix-R_INNER, iy-R_INNER, ix+R_INNER, iy+R_INNER], fill=IRIS_INNER)
 
         random.seed(int(time.time()*9))
-        count = 54
+        count = 52
         for i in range(count):
             base = (i/count)*2*math.pi
-            angle = math.atan2(math.sin(base)*1.6, math.cos(base)) \
-                    + random.uniform(-0.05,0.05) + 0.10*math.sin(self.twinkle + i*0.25)
+            angle = math.atan2(math.sin(base)*1.3, math.cos(base)) \
+                    + random.uniform(-0.06,0.06) + 0.12*math.sin(self.twinkle + i*0.23)
             inner = 18 + (4 if i%3==0 else 2)
             outer = random.randint(max(inner+24, R_INNER+8), R_STRIATION_OUT)
             x1 = ix + int(inner*math.cos(angle)); y1 = iy + int(inner*math.sin(angle))
             x2 = ix + int(outer*math.cos(angle)); y2 = iy + int(outer*math.sin(angle))
             w = 1 if i%2 else 2
-            col = FIBER_DARK if i%3==0 else FIBER_CYAN
+            col = FISSURE_DARK if i%3==0 else VEIN_ORANGE
             d.line([x1,y1,x2,y2], fill=col, width=w)
 
-        for _ in range(200):
+        # ember flecks
+        for _ in range(180):
             r = random.randint(22, R_FLECK_MAX); a = random.uniform(0, 2*math.pi)
             x = ix + int(r*math.cos(a)); y = iy + int(r*math.sin(a))
             if (x-ix)**2 + (y-iy)**2 <= R_OUTER**2:
-                col = (random.randint(120,180), random.randint(200,240), random.randint(210,255))
+                col = (random.randint(220,255), random.randint(120,170), random.randint(20,50))
                 d.point((x,y), fill=col)
 
+        # jagged limbal ring
         teeth = 50
         for t in range(teeth):
             a0 = (t/teeth)*2*math.pi; jitter = random.uniform(-2.0, 2.0)
             r0, r1 = max(0, R_MID+jitter), max(0, R_OUTER+jitter)
             x0 = ix + int(r0*math.cos(a0)); y0 = iy + int(r0*math.sin(a0))
             x1 = ix + int(r1*math.cos(a0)); y1 = iy + int(r1*math.sin(a0))
-            d.line([x0,y0,x1,y1], fill=(12,28,40), width=1)
+            d.line([x0,y0,x1,y1], fill=(30, 12, 8), width=1)
 
-    def _draw_one_rotated_fissure(self, d, ix, iy, angle_rad):
-        """Draw a single serrated slit rotated by angle_rad around (ix,iy)."""
+    def _draw_lava_fissure_pupil(self, d, ix, iy):
         half_h = self.slit_height // 2
         phase = int(self.twinkle * 13)
-        ca, sa = math.cos(angle_rad), math.sin(angle_rad)
-
         for dy in range(-half_h, half_h+1):
             t = abs(dy) / half_h if half_h else 1.0
             base_w = self.base_width * (1.0 - (t ** self.pointiness))
             serr = 1.0 + self.serration_amp * math.sin(self.serration_freq * dy + phase*0.07) \
-                        + 0.10 * math.sin(0.15*dy + phase*0.11)
+                        + 0.12 * math.sin(0.15*dy + phase*0.11)
             width_f = base_w * max(0.0, serr)
             w = int(round(width_f))
             x_bend = int(self.center_zigzag * (1 if (dy//4)%2==0 else -1))
-
             if w > 0:
-                # endpoints before rotation (local coords)
-                x0, y0 = -w//2 + x_bend, dy
-                x1, y1 =  w//2 + x_bend, dy
-                # rotate and translate
-                X0 = ix + int(x0*ca - y0*sa); Y0 = iy + int(x0*sa + y0*ca)
-                X1 = ix + int(x1*ca - y1*sa); Y1 = iy + int(x1*sa + y1*ca)
-                d.line([X0, Y0, X1, Y1], fill=PUPIL_COLOR)
-
-    def _draw_fractal_pupil(self, d, ix, iy):
-        for ang in self.angles:
-            self._draw_one_rotated_fissure(d, ix, iy, ang)
+                y = iy + dy
+                d.line([ix - w//2 + x_bend, y, ix + w//2 + x_bend, y], fill=PUPIL_COLOR)
 
     def draw(self):
         img = self.scale_bg.copy()
@@ -229,26 +223,29 @@ class IcyDragonEyeFractal:
         ix, iy = self.cx + int(self.x), self.cy + int(self.y)
 
         self._draw_iris(d, ix, iy)
-        self._draw_fractal_pupil(d, ix, iy)
+        self._draw_lava_fissure_pupil(d, ix, iy)
 
+        # highlights
         d.ellipse([ix - 7, iy - 44, ix + 7, iy - 34], fill=SPECULAR_A)
         d.ellipse([ix - 3, iy - 40, ix + 3, iy - 36], fill=SPECULAR_B)
 
+        # soft top shadow (taller band for big eye)
         shadow = Image.new("RGBA", (self.w, self.h), (0,0,0,0))
         sd = ImageDraw.Draw(shadow)
-        for r in range(46):
-            alpha = int(110 * (1 - r/46))
+        for r in range(48):
+            alpha = int(120 * (1 - r / 48))
             sd.rectangle([0, r, self.w, r], fill=(0,0,0,alpha))
         img = Image.alpha_composite(img.convert("RGBA"), shadow).convert("RGB")
 
+        # blink lids
         if self.blink > 0:
             h = int(120*self.blink)
             for y in range(0, h, 3):
-                darkness = int(50*(1 - y/max(h,1)))
+                darkness = int(60*(1 - y/max(h,1)))
                 col = (SCALE_OUTLINE[0]+darkness//4, SCALE_OUTLINE[1], SCALE_OUTLINE[2])
                 d.rectangle([0, y, self.w, y+2], fill=col)
             for y in range(self.h - h, self.h, 3):
-                darkness = int(50*((y-(self.h-h))/max(h,1)))
+                darkness = int(60*((y-(self.h-h))/max(h,1)))
                 col = (SCALE_OUTLINE[0]+darkness//4, SCALE_OUTLINE[1], SCALE_OUTLINE[2])
                 d.rectangle([0, y, self.w, y+2], fill=col)
 
@@ -256,8 +253,8 @@ class IcyDragonEyeFractal:
 
 # -------- Main --------
 def main():
-    print("❄️ Icy Blue Dragon Eye — Fractal Crack Pupil — Pi Zero W + GC9A01")
-    lcd = GC9A01(); lcd.init(); eye = IcyDragonEyeFractal(240,240)
+    print("🔥 Magma Salamander Eye — BIG — Pi Zero W + GC9A01")
+    lcd = GC9A01(); lcd.init(); eye = MagmaSalamanderEye(240,240)
     start = time.time(); frames = 0
     try:
         while True:

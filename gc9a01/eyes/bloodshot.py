@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bloodshot Eye - Red veins, no blinking, no eyelids
+Bloodshot Eye - Red veins, no blinking
 """
 
 import time

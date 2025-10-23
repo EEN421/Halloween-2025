@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Icy Blue Dragon Eye — Fractal Crack Pupil (Pi Zero W + GC9A01)
-- Glacial iris (same as other icy file)
-- Pupil = three rotated serrated slits (0°, +20°, −20°) → snow/ice fracture look
+Icy Blue Dragon Eye — Fissure Pupil (Pi Zero W + GC9A01 240x240 SPI)
+- Glacial iris with crystalline striations + speckles
+- Jagged 'ice fissure' pupil (serrated slit w/ subtle zigzag centerline)
 - Enlarged eyeball footprint (iris/sclera)
+- Scaly background (pre-rendered), soft shadow, blink
 """
 
 import time, math, random
@@ -13,9 +14,11 @@ import RPi.GPIO as GPIO
 import spidev
 from PIL import Image, ImageDraw
 
+# -------- Pins (BCM) --------
 DC  = 24
 RST = 25
 
+# -------- Eyeball scale (bigger eye) --------
 EYE_RADIUS = 112
 R_OUTER = EYE_RADIUS
 R_MID   = max(0, EYE_RADIUS - 16)
@@ -23,14 +26,15 @@ R_INNER = max(0, EYE_RADIUS - 36)
 R_STRIATION_OUT = max(0, EYE_RADIUS - 12)
 R_FLECK_MAX     = max(0, EYE_RADIUS - 14)
 
+# -------- Palette (icy) --------
 BACKGROUND_COLOR     = (8, 10, 14)
 SCALE_OUTLINE        = (12, 24, 36)
 SCALE_FILL           = (20, 44, 64)
 SCALE_HILITE         = (140, 200, 230)
 
-IRIS_OUTER           = (22, 92, 132)
-IRIS_MID             = (40, 150, 200)
-IRIS_INNER           = (210, 240, 255)
+IRIS_OUTER           = (22, 92, 132)    # deep ice
+IRIS_MID             = (40, 150, 200)   # bright cyan
+IRIS_INNER           = (210, 240, 255)  # frosty white-blue
 
 FIBER_DARK           = (15, 40, 60)
 FIBER_CYAN           = (30, 120, 180)
@@ -39,6 +43,7 @@ PUPIL_COLOR          = (3, 6, 8)
 SPECULAR_A           = (245, 255, 255)
 SPECULAR_B           = (255, 255, 255)
 
+# -------- GC9A01 Driver --------
 class GC9A01:
     def __init__(self):
         self.width, self.height = 240, 240
@@ -107,7 +112,8 @@ class GC9A01:
     def cleanup(self):
         self.spi.close(); GPIO.cleanup()
 
-class IcyDragonEyeFractal:
+# -------- Eye Model (icy + fissure) --------
+class IcyDragonEye:
     def __init__(self, w=240, h=240):
         self.w, self.h = w, h
         self.cx, self.cy = w//2, h//2
@@ -115,14 +121,13 @@ class IcyDragonEyeFractal:
         self.blink_state = 0; self.blink = 0.0
         self.twinkle = 0.0
 
-        # Crack pupil (three rotated serrated slits)
-        self.slit_height = 128
-        self.base_width  = 12
+        # Fissure pupil params (icy variant)
+        self.slit_height = 136
+        self.base_width  = 16
         self.pointiness  = 2.1
-        self.serration_amp  = 0.26
+        self.serration_amp  = 0.24   # a touch cleaner than magma
         self.serration_freq = 0.33
-        self.center_zigzag  = 0.9
-        self.angles = [0.0, math.radians(20.0), math.radians(-20.0)]
+        self.center_zigzag  = 1.0
 
         self.scale_bg = self._render_scales()
 
@@ -195,12 +200,9 @@ class IcyDragonEyeFractal:
             x1 = ix + int(r1*math.cos(a0)); y1 = iy + int(r1*math.sin(a0))
             d.line([x0,y0,x1,y1], fill=(12,28,40), width=1)
 
-    def _draw_one_rotated_fissure(self, d, ix, iy, angle_rad):
-        """Draw a single serrated slit rotated by angle_rad around (ix,iy)."""
+    def _draw_fissure_pupil(self, d, ix, iy):
         half_h = self.slit_height // 2
         phase = int(self.twinkle * 13)
-        ca, sa = math.cos(angle_rad), math.sin(angle_rad)
-
         for dy in range(-half_h, half_h+1):
             t = abs(dy) / half_h if half_h else 1.0
             base_w = self.base_width * (1.0 - (t ** self.pointiness))
@@ -209,19 +211,9 @@ class IcyDragonEyeFractal:
             width_f = base_w * max(0.0, serr)
             w = int(round(width_f))
             x_bend = int(self.center_zigzag * (1 if (dy//4)%2==0 else -1))
-
             if w > 0:
-                # endpoints before rotation (local coords)
-                x0, y0 = -w//2 + x_bend, dy
-                x1, y1 =  w//2 + x_bend, dy
-                # rotate and translate
-                X0 = ix + int(x0*ca - y0*sa); Y0 = iy + int(x0*sa + y0*ca)
-                X1 = ix + int(x1*ca - y1*sa); Y1 = iy + int(x1*sa + y1*ca)
-                d.line([X0, Y0, X1, Y1], fill=PUPIL_COLOR)
-
-    def _draw_fractal_pupil(self, d, ix, iy):
-        for ang in self.angles:
-            self._draw_one_rotated_fissure(d, ix, iy, ang)
+                y = iy + dy
+                d.line([ix - w//2 + x_bend, y, ix + w//2 + x_bend, y], fill=PUPIL_COLOR)
 
     def draw(self):
         img = self.scale_bg.copy()
@@ -229,7 +221,7 @@ class IcyDragonEyeFractal:
         ix, iy = self.cx + int(self.x), self.cy + int(self.y)
 
         self._draw_iris(d, ix, iy)
-        self._draw_fractal_pupil(d, ix, iy)
+        self._draw_fissure_pupil(d, ix, iy)
 
         d.ellipse([ix - 7, iy - 44, ix + 7, iy - 34], fill=SPECULAR_A)
         d.ellipse([ix - 3, iy - 40, ix + 3, iy - 36], fill=SPECULAR_B)
@@ -256,8 +248,8 @@ class IcyDragonEyeFractal:
 
 # -------- Main --------
 def main():
-    print("❄️ Icy Blue Dragon Eye — Fractal Crack Pupil — Pi Zero W + GC9A01")
-    lcd = GC9A01(); lcd.init(); eye = IcyDragonEyeFractal(240,240)
+    print("❄️ Icy Blue Dragon Eye — Fissure — Pi Zero W + GC9A01")
+    lcd = GC9A01(); lcd.init(); eye = IcyDragonEye(240,240)
     start = time.time(); frames = 0
     try:
         while True:
